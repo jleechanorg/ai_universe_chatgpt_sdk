@@ -20,7 +20,7 @@ const widgetHtml = readFileSync(resolve(__dirname, "../widgets/ai-universe.html"
 
 const greetingArgsSchema = z
   .object({
-    name: z.string().min(1).optional()
+    name: z.string().optional()
   })
   .strict();
 
@@ -74,7 +74,7 @@ async function createGreetingServer() {
       const greetingName = name?.trim() || "explorer";
       const greeting = `Hello, ${greetingName}! Welcome to the AI Universe.`;
 
-      return {
+      const result = {
         content: [
           {
             type: "text",
@@ -88,8 +88,19 @@ async function createGreetingServer() {
               text: widgetHtml
             }
           }
-        ]
+        ],
+        structuredContent: {
+          greeting,
+          name: greetingName
+        }
+      } satisfies ContentResult & {
+        structuredContent: {
+          greeting: string;
+          name: string;
+        };
       };
+
+      return result;
     }
   };
 
@@ -99,8 +110,19 @@ async function createGreetingServer() {
 }
 
 async function main() {
-  const portEnv = Number(process.env.PORT ?? 3030);
-  const listenPort = Number.isFinite(portEnv) ? portEnv : 3030;
+  const defaultPort = 3030;
+  const rawPort = process.env.PORT;
+  const parsedPort = rawPort === undefined ? undefined : Number.parseInt(rawPort, 10);
+  const listenPort =
+    parsedPort !== undefined && Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort <= 65535
+      ? parsedPort
+      : defaultPort;
+
+  if (rawPort !== undefined && listenPort === defaultPort) {
+    console.warn(
+      `Ignoring invalid PORT value "${rawPort}". Falling back to default port ${defaultPort}.`
+    );
+  }
   const proxyPath = "/mcp";
 
   const server = await createGreetingServer();
