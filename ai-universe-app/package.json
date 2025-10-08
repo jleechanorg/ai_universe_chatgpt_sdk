@@ -1,0 +1,22 @@
+{
+  "name": "ai-universe-chatgpt-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Universe ChatGPT Apps SDK example powered by shared MCP utilities",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ai-universe/mcp-server-utils": "^1.0.1",
+    "fastmcp": "^3.15.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "tsx": "^4.20.0",
+    "typescript": "^5.6.3"
+  }
+}
