@@ -4,28 +4,50 @@ import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.MCP_TEST_TIMEOUT_MS ?? 30000);
-const DEFAULT_ATTEMPTS = Number(process.env.MCP_TEST_MAX_ATTEMPTS ?? 4);
-const DEFAULT_RETRY_DELAY_MS = Number(process.env.MCP_TEST_RETRY_DELAY_MS ?? 1000);
-const HEALTH_MAX_ATTEMPTS = Number(
-  process.env.MCP_HEALTH_MAX_ATTEMPTS ?? process.env.HEALTH_CHECK_MAX_ATTEMPTS ?? 12
+function parseIntEnv(name, defaultValue, { min, max } = {}) {
+  const raw = process.env[name];
+  const value = raw === undefined || raw === '' ? defaultValue : Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || Number.isNaN(value) || !Number.isInteger(value)) {
+    console.error(`❌ ${name} must be a valid integer, received: ${raw}`);
+    process.exit(1);
+  }
+  if (min !== undefined && value < min) {
+    console.error(`❌ ${name} must be >= ${min}, received: ${value}`);
+    process.exit(1);
+  }
+  if (max !== undefined && value > max) {
+    console.error(`❌ ${name} must be <= ${max}, received: ${value}`);
+    process.exit(1);
+  }
+  return value;
+}
+
+const DEFAULT_TIMEOUT_MS = parseIntEnv('MCP_TEST_TIMEOUT_MS', 30000, { min: 1 });
+const DEFAULT_ATTEMPTS = parseIntEnv('MCP_TEST_MAX_ATTEMPTS', 4, { min: 1 });
+const DEFAULT_RETRY_DELAY_MS = parseIntEnv('MCP_TEST_RETRY_DELAY_MS', 1000, { min: 0 });
+const HEALTH_MAX_ATTEMPTS = parseIntEnv(
+  'MCP_HEALTH_MAX_ATTEMPTS',
+  parseIntEnv('HEALTH_CHECK_MAX_ATTEMPTS', 12, { min: 1 }),
+  { min: 1 }
 );
-const HEALTH_INTERVAL_SECONDS = Number(
-  process.env.MCP_HEALTH_INTERVAL_SECONDS ?? process.env.HEALTH_CHECK_INTERVAL_SECONDS ?? 5
+const HEALTH_INTERVAL_SECONDS = parseIntEnv(
+  'MCP_HEALTH_INTERVAL_SECONDS',
+  parseIntEnv('HEALTH_CHECK_INTERVAL_SECONDS', 5, { min: 1 }),
+  { min: 1 }
 );
+const HEALTH_FETCH_TIMEOUT_MS = parseIntEnv('MCP_HEALTH_FETCH_TIMEOUT_MS', 10000, { min: 100 });
 const EXPECTED_TOOLS = (process.env.MCP_EXPECTED_TOOLS ?? 'ai_universe_greeting')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
-const EXPECTED_PRIMARY_COUNT = Number(process.env.MCP_EXPECTED_PRIMARY_COUNT ?? 0);
-const EXPECTED_SECONDARY_COUNT = Number(process.env.MCP_EXPECTED_SECONDARY_COUNT ?? 0);
+const EXPECTED_PRIMARY_COUNT = parseIntEnv('MCP_EXPECTED_PRIMARY_COUNT', 0, { min: 0 });
+const EXPECTED_SECONDARY_COUNT = parseIntEnv('MCP_EXPECTED_SECONDARY_COUNT', 0, { min: 0 });
 const SECOND_OPINION_TOOL = process.env.MCP_SECOND_OPINION_TOOL ?? 'agent.second_opinion';
 
-const baseUrlRaw = process.env.MCP_SERVER_URL ?? process.env.PREVIEW_URL ?? '';
+const baseUrlRaw = (process.env.MCP_SERVER_URL ?? process.env.PREVIEW_URL ?? '').trim();
 if (!baseUrlRaw) {
   console.error('❌ MCP_SERVER_URL (or PREVIEW_URL) must be set.');
-  process.exitCode = 1;
-  process.exit();
+  process.exit(1);
 }
 
 const baseUrl = baseUrlRaw.replace(/\/$/, '');
@@ -68,18 +90,35 @@ async function waitForHealth() {
   console.log('ℹ️ Waiting for /health to report healthy...');
   for (let attempt = 1; attempt <= HEALTH_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const response = await fetch(healthUrl, { headers: { Accept: 'application/json' } });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const payload = await response.json();
-      if (payload && typeof payload === 'object') {
-        if (payload.status === 'healthy' || payload.status === 'ok') {
-          console.log('✅ Health endpoint reports healthy state.');
-          return payload;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), HEALTH_FETCH_TIMEOUT_MS);
+      try {
+        const response = await fetch(healthUrl, {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (payload && typeof payload === 'object') {
+          if (payload.status === 'healthy' || payload.status === 'ok') {
+            console.log('✅ Health endpoint reports healthy state.');
+            return payload;
+          }
+        }
+        console.log(`ℹ️ Health response attempt ${attempt}:`, payload);
+      } catch (error) {
+        clearTimeout(timer);
+        if (error?.name === 'AbortError') {
+          console.log(
+            `ℹ️ Health probe ${attempt}/${HEALTH_MAX_ATTEMPTS} timed out after ${HEALTH_FETCH_TIMEOUT_MS}ms`
+          );
+        } else {
+          throw error;
         }
       }
-      console.log(`ℹ️ Health response attempt ${attempt}:`, payload);
     } catch (error) {
       console.log(`ℹ️ Health probe ${attempt}/${HEALTH_MAX_ATTEMPTS} failed: ${error}`);
     }
@@ -111,6 +150,9 @@ async function jsonRpcRequest(method, params = {}) {
   }
   if (data.id !== id) {
     throw new Error(`RPC ${method} returned mismatched id ${data.id}, expected ${id}`);
+  }
+  if (!('result' in data)) {
+    throw new Error(`RPC ${method} missing result field`);
   }
   return data.result;
 }

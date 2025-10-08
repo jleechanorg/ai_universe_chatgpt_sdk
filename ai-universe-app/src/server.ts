@@ -16,7 +16,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const widgetUri = "ui://widget/ai-universe.html";
-const widgetHtml = readFileSync(resolve(__dirname, "../widgets/ai-universe.html"), "utf-8");
+let widgetHtml: string | null = null;
+const getWidgetHtml = (): string => {
+  if (widgetHtml === null) {
+    widgetHtml = readFileSync(resolve(__dirname, "../widgets/ai-universe.html"), "utf-8");
+  }
+  return widgetHtml;
+};
 
 const greetingArgsSchema = z
   .object({
@@ -34,7 +40,7 @@ const greetingResource: Resource<Record<string, unknown> | undefined> = {
   load: async () => ({
     uri: widgetUri,
     mimeType: "text/html+skybridge",
-    text: widgetHtml
+    text: getWidgetHtml()
   })
 };
 
@@ -47,7 +53,7 @@ const greetingTemplate: ResourceTemplate<Record<string, unknown> | undefined> = 
   load: async () => ({
     uri: widgetUri,
     mimeType: "text/html+skybridge",
-    text: widgetHtml
+    text: getWidgetHtml()
   })
 };
 
@@ -85,7 +91,7 @@ async function createGreetingServer() {
             resource: {
               uri: widgetUri,
               mimeType: "text/html+skybridge",
-              text: widgetHtml
+              text: getWidgetHtml()
             }
           }
         ]
@@ -99,8 +105,11 @@ async function createGreetingServer() {
 }
 
 async function main() {
-  const portEnv = Number(process.env.PORT ?? 3030);
-  const listenPort = Number.isFinite(portEnv) ? portEnv : 3030;
+  const defaultPort = 3030;
+  const portEnvRaw = process.env.PORT;
+  const parsedPort = portEnvRaw !== undefined ? Number.parseInt(portEnvRaw, 10) : defaultPort;
+  const listenPort =
+    Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535 ? parsedPort : defaultPort;
   const proxyPath = "/mcp";
 
   const server = await createGreetingServer();
@@ -130,5 +139,5 @@ async function main() {
 
 void main().catch((error) => {
   console.error("Failed to start AI Universe MCP server:", error);
-  process.exitCode = 1;
+  process.exit(1);
 });

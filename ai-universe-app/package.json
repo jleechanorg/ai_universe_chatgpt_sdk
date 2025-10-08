@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@ai-universe/mcp-server-utils": "^1.0.1",
-    "fastmcp": "^3.16.0",
+    "fastmcp": "^3.15.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^22.18.8",
+    "@types/node": "^20.17.6",
     "tsx": "^4.20.0",
     "typescript": "^5.6.3"
   }

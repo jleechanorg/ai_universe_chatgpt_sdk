@@ -13,6 +13,7 @@ jobs:
     name: Deploy preview to Cloud Run
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       preview_url: ${{ steps.preview_metadata.outputs.preview_url }}
       service_name: ${{ steps.preview_metadata.outputs.service_name }}
@@ -84,7 +85,7 @@ jobs:
           delay=${HEALTH_CHECK_INTERVAL_SECONDS}
           for attempt in $(seq 1 "$attempts"); do
             echo "Attempt ${attempt}/${attempts}: probing ${PREVIEW_URL}/health"
-            if response=$(curl -sf "${PREVIEW_URL}/health"); then
+            if response=$(curl -sf -A "GitHub-Actions-HealthCheck/1.0" "${PREVIEW_URL}/health"); then
               echo "Health check succeeded: ${response}"
               exit 0
             fi
@@ -112,6 +113,7 @@ jobs:
     needs: deploy-preview
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GCP_PROJECT: ${{ vars.GCP_PROJECT || 'ai-universe-2025' }}
       GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
@@ -152,6 +154,10 @@ jobs:
             exit 0
           fi
           SERVICE_NAME=${{ needs.deploy-preview.outputs.service_name }}
+          if [[ -z "$SERVICE_NAME" ]]; then
+            echo "error: missing service_name output from deploy-preview job" >&2
+            exit 1
+          fi
           URL=$(gcloud run services describe "$SERVICE_NAME" --region "$GCP_REGION" --format='value(status.url)')
           echo "preview_url=${URL}" >> "$GITHUB_OUTPUT"
 

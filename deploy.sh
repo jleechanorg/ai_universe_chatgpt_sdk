@@ -39,6 +39,10 @@ case "$COMMAND" in
     PR_NUMBER=$1
     shift
 
+    if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+      die "PR number must be a positive integer, got: $PR_NUMBER"
+    fi
+
     IMAGE_TAG="${GITHUB_SHA:-latest}"
     SERVICE_SUFFIX=""
 
@@ -71,14 +75,14 @@ case "$COMMAND" in
     if [[ -n "${SERVICE_NAME_OVERRIDE:-}" ]]; then
       SERVICE_NAME=$SERVICE_NAME_OVERRIDE
     else
-      SAFE_SUFFIX=${SERVICE_SUFFIX//[^a-zA-Z0-9-]/-}
+      SAFE_SUFFIX=$(echo "$SERVICE_SUFFIX" | sed 's/[^a-zA-Z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//')
       SERVICE_NAME="ai-universe-app-pr-${PR_NUMBER}${SAFE_SUFFIX:+-$SAFE_SUFFIX}"
     fi
 
     IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/${SERVICE_NAME}:${IMAGE_TAG}"
 
     echo "➡️ Building container image ${IMAGE_URI}"
-    (cd "$ROOT_DIR" && gcloud builds submit --tag "$IMAGE_URI")
+    (cd "$ROOT_DIR" && gcloud builds submit --project "$PROJECT" --tag "$IMAGE_URI")
 
     echo "➡️ Deploying Cloud Run service ${SERVICE_NAME}"
     gcloud run deploy "$SERVICE_NAME" \

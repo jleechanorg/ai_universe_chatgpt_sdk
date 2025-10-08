@@ -81,7 +81,7 @@
       <p class="universe-subtitle" id="universe-subtitle">
         This widget renders the greeting returned by your MCP tool.
       </p>
-      <button id="followup-button" type="button">Greet again</button>
+      <button id="followup-button" type="button" aria-label="Request another greeting from AI Universe">Greet again</button>
     </div>
     <script type="module">
       const card = document.getElementById("universe-card");
@@ -125,9 +125,12 @@
         subtitle.textContent = `ChatGPT knows how to greet ${name}.`;
 
         if (greeting !== greetingFromState || name !== nameFromState) {
-          window.openai?.setWidgetState?.({ greeting, name }).catch((error) => {
-            console.warn("Failed to persist widget state", error);
-          });
+          const maybePersist = window.openai?.setWidgetState?.({ greeting, name });
+          if (typeof maybePersist?.catch === "function") {
+            maybePersist.catch((error) => {
+              console.warn("Failed to persist widget state", error);
+            });
+          }
         }
       };
 
@@ -138,9 +141,10 @@
             ? stateName
             : extractNameFromGreeting(extractGreetingFromContent(window.openai?.toolOutput))) ??
           "explorer";
-        window.openai
-          ?.sendFollowupTurn?.({ prompt: `Please greet ${name} again.` })
-          .catch((error) => console.warn("Failed to trigger follow-up", error));
+        const maybeFollowup = window.openai?.sendFollowupTurn?.({ prompt: `Please greet ${name} again.` });
+        if (typeof maybeFollowup?.catch === "function") {
+          maybeFollowup.catch((error) => console.warn("Failed to trigger follow-up", error));
+        }
       });
 
       window.addEventListener("openai:set_globals", () => {
