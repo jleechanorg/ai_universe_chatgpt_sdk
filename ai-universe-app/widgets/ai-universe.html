@@ -94,22 +94,50 @@
         document.documentElement.dataset.theme = theme;
       };
 
+      const extractGreetingFromContent = (output) => {
+        const textBlock = output?.content?.find((entry) => entry?.type === "text");
+        const text = textBlock?.text;
+        return typeof text === "string" && text.trim().length > 0 ? text : undefined;
+      };
+
+      const extractNameFromGreeting = (greeting) => {
+        if (typeof greeting !== "string") {
+          return undefined;
+        }
+
+        const match = greeting.match(/^hello,\s*(.+?)!/i);
+        return match?.[1]?.trim() || undefined;
+      };
+
       const render = () => {
         const output = window.openai?.toolOutput ?? {};
         const state = window.openai?.widgetState ?? {};
-        const greeting = state.greeting ?? output?.structuredContent?.greeting ?? "Hello, explorer!";
-        const name = output?.structuredContent?.name ?? "explorer";
+
+        const greetingFromState = typeof state.greeting === "string" ? state.greeting : undefined;
+        const greeting =
+          greetingFromState ?? extractGreetingFromContent(output) ?? "Hello, explorer!";
+
+        const nameFromState = typeof state.name === "string" ? state.name : undefined;
+        const name =
+          nameFromState ?? extractNameFromGreeting(greeting) ?? "explorer";
 
         heading.textContent = greeting;
         subtitle.textContent = `ChatGPT knows how to greet ${name}.`;
 
-        window.openai?.setWidgetState?.({ greeting, name }).catch((error) => {
-          console.warn("Failed to persist widget state", error);
-        });
+        if (greeting !== greetingFromState || name !== nameFromState) {
+          window.openai?.setWidgetState?.({ greeting, name }).catch((error) => {
+            console.warn("Failed to persist widget state", error);
+          });
+        }
       };
 
       button.addEventListener("click", () => {
-        const name = window.openai?.toolOutput?.structuredContent?.name ?? "explorer";
+        const stateName = window.openai?.widgetState?.name;
+        const name =
+          (typeof stateName === "string" && stateName.trim().length > 0
+            ? stateName
+            : extractNameFromGreeting(extractGreetingFromContent(window.openai?.toolOutput))) ??
+          "explorer";
         window.openai
           ?.sendFollowupTurn?.({ prompt: `Please greet ${name} again.` })
           .catch((error) => console.warn("Failed to trigger follow-up", error));
