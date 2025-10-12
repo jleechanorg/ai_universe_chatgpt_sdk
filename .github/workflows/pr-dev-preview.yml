@@ -11,7 +11,7 @@ permissions:
 jobs:
   deploy-preview:
     name: Deploy preview to Cloud Run
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft && (secrets.GCP_SA_KEY != '' || secrets.GOOGLE_CREDENTIALS != '') }}
     runs-on: ubuntu-latest
     outputs:
       preview_url: ${{ steps.preview_metadata.outputs.preview_url }}
@@ -118,7 +118,7 @@ jobs:
   run-smoke-tests:
     name: Run MCP smoke tests
     needs: deploy-preview
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft && needs.deploy-preview.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       GCP_PROJECT: ${{ vars.GCP_PROJECT || 'ai-universe-2025' }}
@@ -194,3 +194,31 @@ jobs:
           PREVIEW_URL: ${{ steps.resolve_preview.outputs.preview_url }}
         run: |
           gh pr comment ${{ github.event.pull_request.number }} --body "❌ MCP smoke tests failed for [preview](${PREVIEW_URL}). Please inspect the logs."
+
+  missing-credentials:
+    name: Notify missing preview credentials
+    if: ${{ !github.event.pull_request.draft && !(secrets.GCP_SA_KEY != '' || secrets.GOOGLE_CREDENTIALS != '') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment missing credentials notice
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const message = `⚠️ Preview deployment skipped because required Google Cloud credentials are not available.\n\nPlease configure the \`GCP_SA_KEY\` secret (preferred) or \`GOOGLE_CREDENTIALS\` as documented in the README to enable preview deployments.`;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const alreadyPosted = comments.some((comment) =>
+              comment.user?.login === 'github-actions[bot]' && comment.body.includes('Preview deployment skipped because required Google Cloud credentials are not available.')
+            );
+            if (!alreadyPosted) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: prNumber,
+                body: message,
+              });
+            }
