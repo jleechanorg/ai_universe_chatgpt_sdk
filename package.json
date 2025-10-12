@@ -1,0 +1,12 @@
+{
+  "name": "ai-universe-chatgpt-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:mcp": "node ./scripts/mcp-ci-tests.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.19.1"
+  }
+}
